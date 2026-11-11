@@ -1,0 +1,22 @@
+# systemd unit for the PeerPays API (Node + Socket.IO)
+# Install to: /etc/systemd/system/peerpays-api.service
+# Then: sudo systemctl daemon-reload && sudo systemctl enable --now peerpays-api
+
+[Unit]
+Description=PeerPays API
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/var/www/peerpays/backend
+# The app loads its own .env (via dotenv) from WorkingDirectory.
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+# Basic hardening
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

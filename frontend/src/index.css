@@ -1,0 +1,194 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    height: 100%;
+    /* Stop mobile browsers from auto-inflating text (a common cause of "zoomed in" look). */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased;
+    min-height: 100%;
+    min-height: 100dvh;
+    /* Fit to screen: never allow sideways scroll / pinch-drift in the installed app. */
+    overflow-x: hidden;
+    overscroll-behavior-y: none;
+    touch-action: manipulation;
+    /* Better text rendering on mobile */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  #root {
+    min-height: 100dvh;
+  }
+  
+  /* Better mobile scroll */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Remove focus outline on mouse click, keep for keyboard */
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+  
+  *:focus-visible {
+    outline: 2px solid theme('colors.brand.500');
+    outline-offset: 2px;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@layer components {
+  /* Mobile-First Button Styles - Larger touch targets */
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2.5 text-sm font-semibold leading-5 transition disabled:cursor-not-allowed disabled:opacity-50;
+    min-height: 44px; /* iOS recommended touch target */
+    min-width: 44px;
+  }
+  .btn-block {
+    @apply w-full py-3;
+  }
+  .btn-xs {
+    @apply gap-1 rounded-md px-3 py-2 text-xs;
+    min-height: 36px;
+  }
+  .btn-primary {
+    @apply btn bg-navy-900 text-white hover:bg-navy-800 shadow-sm active:scale-95;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 active:scale-95;
+  }
+  .btn-success {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-sm active:scale-95;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700 shadow-sm active:scale-95;
+  }
+  .btn-warning {
+    @apply btn border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 active:scale-95;
+  }
+  
+  /* Mobile-Friendly Cards */
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+  
+  /* Mobile-Optimized Inputs - Larger touch targets */
+  .input {
+    @apply w-full rounded-lg border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-colors;
+    min-height: 48px;
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  /* Textarea specific styling */
+  textarea.input {
+    min-height: 100px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  
+  /* Mobile Input for OTP - Extra large for easy typing */
+  .input-otp {
+    @apply input font-mono text-2xl text-center tracking-widest;
+    min-height: 56px;
+    font-size: 24px;
+  }
+  
+  .brand-gradient {
+    @apply bg-gradient-to-br from-navy-900 to-brand-500;
+  }
+  
+  /* Mobile-Friendly Labels */
+  .label {
+    @apply mb-2 block text-sm font-medium text-slate-700;
+  }
+  
+  .chip {
+    @apply inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium leading-4;
+  }
+  
+  /* Mobile Tap Feedback */
+  .tap-highlight {
+    -webkit-tap-highlight-color: rgba(59, 130, 246, 0.1);
+  }
+  
+  /* Prevent text selection on buttons (better mobile UX) */
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  
+  /* Better select dropdowns on mobile */
+  select.input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23475569'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.25em;
+    padding-right: 2.5rem;
+    appearance: none;
+  }
+  
+  /* Sticky header utility */
+  .sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: white;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Safe area utilities */
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .safe-area-pb {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+  }
+  
+  /* Better mobile scrollbar */
+  @media (max-width: 768px) {
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 2px;
+    }
+  }
+}
