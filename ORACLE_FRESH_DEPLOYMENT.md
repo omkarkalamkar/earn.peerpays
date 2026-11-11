@@ -20,7 +20,7 @@ Before starting, ensure you have:
 4. Select: **Create VCN with Internet Connectivity**
 5. Enter details:
    ```
-   VCN Name: peerpays-vcn
+   VCN Name: earn-peerpays-vcn
    Compartment: (root) or your compartment
    VCN CIDR Block: 10.0.0.0/16
    
@@ -35,7 +35,7 @@ Before starting, ensure you have:
 ### Step 2: Configure Security List (CRITICAL)
 
 1. In the VCN you just created, click **Security Lists**
-2. Click **Default Security List for peerpays-vcn**
+2. Click **Default Security List for earn-peerpays-vcn**
 3. Click **Add Ingress Rules** and add these:
 
 **Rule 1: HTTP**
@@ -81,14 +81,14 @@ Description: Node.js backend
 2. You should see one gateway (created by wizard)
 3. Verify:
    ```
-   Name: internet-gateway-peerpays-vcn (or similar)
+   Name: internet-gateway-earn-peerpays-vcn (or similar)
    State: Enabled ✅
    ```
 
 ### Step 4: Verify Route Table
 
 1. In VCN page, click **Route Tables**
-2. Click **Default Route Table for peerpays-vcn**
+2. Click **Default Route Table for earn-peerpays-vcn**
 3. Verify this route exists:
    ```
    Destination CIDR: 0.0.0.0/0
@@ -111,7 +111,7 @@ If missing, click **Add Route Rules** and add it.
 
 **Name:**
 ```
-peerpays-server
+earn-peerpays-prod
 ```
 
 **Placement:**
@@ -143,7 +143,7 @@ Network Bandwidth: 0.48 Gbps
 THIS IS CRITICAL - DOUBLE CHECK:
 ```
 ✅ Primary Network:
-   - Virtual Cloud Network: peerpays-vcn
+   - Virtual Cloud Network: earn-peerpays-vcn
    - Subnet: Public Subnet (10.0.1.0/24)
    
 ✅ Public IP Address:
@@ -321,8 +321,8 @@ npm install
 
 # Create production .env file
 cat > .env << 'EOF'
-MONGO_URI=mongodb://localhost:27017/peerpays
-JWT_SECRET=peerpays-production-secret-key-2026
+MONGO_URI=mongodb://localhost:27017/earn_peerpays
+JWT_SECRET=earn-peerpays-production-secret-2026
 PORT=5050
 NODE_ENV=production
 EOF
@@ -352,21 +352,21 @@ ls -la dist/    # Should see index.html and assets/
 cd ~/earn.peerpays/backend
 
 # Start with PM2
-pm2 start server.js --name peerpays-api
+pm2 start server.js --name earn-peerpays-api
 
 # Save PM2 config
 pm2 save
 
 # Check status
 pm2 status    # Should show "online"
-pm2 logs peerpays-api --lines 20    # Check for errors
+pm2 logs earn-peerpays-api --lines 20    # Check for errors
 ```
 
 ### 5.5: Configure Nginx
 
 ```bash
 # Create Nginx config
-sudo tee /etc/nginx/sites-available/peerpays << 'NGXCONF'
+sudo tee /etc/nginx/sites-available/earn-peerpays << 'NGXCONF'
 upstream backend {
     server localhost:5050;
 }
@@ -410,7 +410,7 @@ server {
 NGXCONF
 
 # Enable site
-sudo ln -sf /etc/nginx/sites-available/peerpays /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/earn-peerpays /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 
 # Test config
@@ -520,8 +520,8 @@ This is your public URL! ✅
 2. Add domain: `peerpays.in`
 3. Follow Cloudflare's nameserver instructions
 4. Run: `cloudflared tunnel login` (on your Mac)
-5. Run: `cloudflared tunnel create peerpays`
-6. Run: `cloudflared tunnel route dns peerpays earn.peerpays.in`
+5. Run: `cloudflared tunnel create earn-peerpays-prod`
+6. Run: `cloudflared tunnel route dns earn-peerpays-prod earn.peerpays.in`
 
 ---
 
@@ -579,9 +579,9 @@ sudo systemctl restart mongod
 ### Issue: Backend crashes
 **Solution:**
 ```bash
-pm2 logs peerpays-api
+pm2 logs earn-peerpays-api
 # Check error, fix, then restart:
-pm2 restart peerpays-api
+pm2 restart earn-peerpays-api
 ```
 
 ### Issue: Frontend shows blank page
@@ -603,7 +603,7 @@ pm2 status && sudo systemctl status mongod && sudo systemctl status nginx
 
 ### View logs:
 ```bash
-pm2 logs peerpays-api
+pm2 logs earn-peerpays-api
 sudo tail -f /var/log/nginx/error.log
 ```
 
@@ -620,7 +620,7 @@ cd ~/earn.peerpays
 git pull
 cd backend && npm install
 cd ../frontend && npm install && npm run build
-pm2 restart peerpays-api
+pm2 restart earn-peerpays-api
 ```
 
 ---
