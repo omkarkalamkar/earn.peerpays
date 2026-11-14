@@ -66,17 +66,21 @@ export default function BookerDeals() {
     }
   }
 
-  async function acceptAll(items) {
+  async function requestOtpForAll(items) {
     const bookingIds = items.map((s) => s._id);
     setBusyId(items[0]?._id);
     try {
-      await api.post('/bookings/accept-many', { bookingIds });
-      pushToast(`Accepted ${bookingIds.length} card(s). Open My Orders to send the OTP.`);
+      // Request OTP for each booking
+      for (const s of items) {
+        // eslint-disable-next-line no-await-in-loop
+        await api.post(`/bookings/${s._id}/request-otp`).catch(() => {});
+      }
+      pushToast(`OTP requested for ${bookingIds.length} card(s). Card holders will approve.`);
       setRevealed(null);
       setOpenDeal(null);
       navigate('/booker/orders');
     } catch (err) {
-      pushToast(err.response?.data?.message || 'Failed to accept');
+      pushToast(err.response?.data?.message || 'Failed to request OTP');
       load();
     } finally {
       setBusyId(null);
@@ -110,16 +114,35 @@ export default function BookerDeals() {
     });
   }
 
-  async function rejectOne(s) {
+  async function rejectOne(s, reason = null) {
     setBusyId(s._id);
     try {
-      await api.post(`/bookings/${s._id}/reject`);
-      pushToast('Card rejected. It cannot be re-submitted to this deal.');
+      const payload = reason ? { reason } : {};
+      await api.post(`/bookings/${s._id}/reject`, payload);
+      const msg = reason === 'offer_not_applicable'
+        ? 'Offer not applicable - card rejected'
+        : 'Card rejected. It cannot be re-submitted to this deal.';
+      pushToast(msg);
       setRevealed(null);
       pruneOpenDeal(new Set([s._id]));
       load();
     } catch (err) {
       pushToast(err.response?.data?.message || 'Failed to reject');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function requestOtpForOne(s) {
+    setBusyId(s._id);
+    try {
+      await api.post(`/bookings/${s._id}/request-otp`);
+      pushToast('OTP requested. Card holder will approve.');
+      setRevealed(null);
+      setOpenDeal(null);
+      navigate('/booker/orders');
+    } catch (err) {
+      pushToast(err.response?.data?.message || 'Failed to request OTP');
     } finally {
       setBusyId(null);
     }
@@ -211,9 +234,9 @@ export default function BookerDeals() {
                   <button
                     className="btn-success flex-1"
                     disabled={!!busyId}
-                    onClick={() => acceptAll(items)}
+                    onClick={() => requestOtpForAll(items)}
                   >
-                    Accept all {items.length} card(s)
+                    📱 Request OTP ({items.length})
                   </button>
                   <button className="btn-danger" disabled={!!busyId} onClick={() => rejectAll(items)}>
                     Reject all
@@ -257,15 +280,27 @@ export default function BookerDeals() {
               won’t be able to re-submit this card to this deal.
             </p>
             <div className="flex gap-2">
-              <button className="btn-secondary flex-1" onClick={() => setRevealed(null)}>
-                Close
+              <button
+                className="btn-success flex-1"
+                disabled={!!busyId}
+                onClick={() => requestOtpForOne(revealed.booking)}
+              >
+                📱 Request OTP
               </button>
               <button
-                className="btn-danger"
+                className="btn-warning flex-1"
+                disabled={!!busyId}
+                onClick={() => rejectOne(revealed.booking, 'offer_not_applicable')}
+                title="Offer not applicable on this card"
+              >
+                ❌ Offer N/A
+              </button>
+              <button
+                className="btn-danger flex-1"
                 disabled={!!busyId}
                 onClick={() => rejectOne(revealed.booking)}
               >
-                Reject card
+                Reject
               </button>
             </div>
           </div>

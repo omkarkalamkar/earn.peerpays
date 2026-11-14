@@ -8,6 +8,7 @@ const mongoose = require('mongoose');
 const cardSchema = new mongoose.Schema(
   {
     owner: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    cardName: { type: String, trim: true }, // Optional nickname for the card (e.g., "My SBI Card")
     bank: { type: String, required: true, trim: true },
     network: { type: String, enum: ['Visa', 'Mastercard', 'RuPay', 'Amex', 'Other'], default: 'Other' },
     type: { type: String, enum: ['credit', 'debit'], required: true },

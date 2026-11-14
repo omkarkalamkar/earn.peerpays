@@ -315,13 +315,6 @@ function BookingRow({ booking, onChange }) {
           </div>
         )}
 
-        {['ACCEPTED', 'CONFIRMED'].includes(booking.status) && (
-          <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
-            <p className="font-medium">✅ Card Accepted!</p>
-            <p className="text-xs mt-1 text-blue-700">The booker will start the order shortly. Keep this screen open.</p>
-          </div>
-        )}
-
         {booking.status === 'OTP_REQUESTED' && (
           <div className="rounded-xl bg-purple-50 border border-purple-200 p-4 space-y-3">
             <div>

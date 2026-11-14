@@ -24,6 +24,45 @@ async function login(req, res) {
   res.json({ token, user });
 }
 
+async function register(req, res) {
+  const { username, password, name, phone, role } = req.body;
+  
+  // Validation
+  if (!username || !password || !name) {
+    return res.status(400).json({ message: 'Username, password, and name are required' });
+  }
+  
+  if (String(password).length < 6) {
+    return res.status(400).json({ message: 'Password must be at least 6 characters' });
+  }
+  
+  // Only allow cardholder registration for self-signup
+  // Admin can create other roles via admin panel
+  const userRole = role === 'cardholder' ? 'cardholder' : 'cardholder';
+  
+  // Check if username already exists
+  const cleanUsername = String(username).toLowerCase().trim();
+  const existing = await User.findOne({ username: cleanUsername });
+  if (existing) {
+    return res.status(409).json({ message: 'Username already taken' });
+  }
+  
+  // Create new user
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = await User.create({
+    username: cleanUsername,
+    passwordHash,
+    role: userRole,
+    name: String(name).trim(),
+    phone: phone ? String(phone).trim() : '',
+    active: true,
+  });
+  
+  // Auto-login after registration
+  const token = signToken(user);
+  res.status(201).json({ token, user });
+}
+
 async function me(req, res) {
   res.json({ user: req.user });
 }
@@ -48,4 +87,4 @@ async function changePassword(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { login, me, changePassword, signToken };
+module.exports = { login, register, me, changePassword, signToken };

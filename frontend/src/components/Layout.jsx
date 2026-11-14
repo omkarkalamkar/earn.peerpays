@@ -13,7 +13,7 @@ const ADMIN_NAV = [
   { to: '/admin/users', label: 'Users', short: 'Users', icon: 'users' },
   { to: '/admin/orders', label: 'Confirmed Orders', short: 'Orders', icon: 'check' },
   { to: '/admin/ledger', label: 'Ledger', short: 'Ledger', icon: 'list' },
-  { to: '/admin/payments', label: 'Payments', short: 'Payments', icon: 'card' },
+  { to: '/admin/issues', label: 'Reported Issues', short: 'Issues', icon: 'alert' },
 ];
 
 const NAV = {
@@ -41,6 +41,9 @@ export default function Layout({ children }) {
   const [open, setOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [perm, setPerm] = useState(() => notificationPermission());
+  const [dismissedNotificationPrompt, setDismissedNotificationPrompt] = useState(() => {
+    return localStorage.getItem('dismissedNotificationPrompt') === 'true';
+  });
   const links = NAV[user.role] || [];
 
   useEffect(() => {
@@ -82,9 +85,24 @@ export default function Layout({ children }) {
     navigate('/login');
   }
 
-  // Notifications are mandatory: block the app until permission is granted.
-  if (perm !== 'granted') {
-    return <NotificationGate perm={perm} onEnable={handleEnableAlerts} onRecheck={() => setPerm(notificationPermission())} onLogout={handleLogout} />;
+  function handleDismissNotificationPrompt() {
+    localStorage.setItem('dismissedNotificationPrompt', 'true');
+    setDismissedNotificationPrompt(true);
+  }
+
+  // Show notification prompt only if not granted AND not dismissed
+  const showNotificationGate = perm !== 'granted' && !dismissedNotificationPrompt;
+
+  if (showNotificationGate) {
+    return (
+      <NotificationGate
+        perm={perm}
+        onEnable={handleEnableAlerts}
+        onRecheck={() => setPerm(notificationPermission())}
+        onLogout={handleLogout}
+        onDismiss={handleDismissNotificationPrompt}
+      />
+    );
   }
 
   return (
@@ -319,7 +337,7 @@ function ChangePasswordModal({ open, onClose, pushToast }) {
   );
 }
 
-function NotificationGate({ perm, onEnable, onRecheck, onLogout }) {
+function NotificationGate({ perm, onEnable, onRecheck, onLogout, onDismiss }) {
   const [busy, setBusy] = useState(false);
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
   const isIOS = /iphone|ipad|ipod/i.test(ua);
@@ -336,13 +354,18 @@ function NotificationGate({ perm, onEnable, onRecheck, onLogout }) {
     }
   }
 
-  let title = 'Enable notifications to continue';
+  let title = 'Enable notifications (recommended)';
   let body =
-    'This app needs notifications turned on so you never miss a deal, OTP request, or order update. Please enable them to use PeerPays.';
+    'Stay updated with real-time alerts for deals, OTP requests, and order updates. You can enable this anytime later from settings.';
   let action = (
-    <button className="btn-primary btn-block" disabled={busy} onClick={enable}>
-      {busy ? 'Requesting…' : 'Enable notifications'}
-    </button>
+    <>
+      <button className="btn-primary btn-block" disabled={busy} onClick={enable}>
+        {busy ? 'Requesting…' : '🔔 Enable notifications'}
+      </button>
+      <button className="btn-secondary btn-block mt-2" onClick={onDismiss}>
+        Maybe later
+      </button>
+    </>
   );
 
   if (perm === 'denied') {
@@ -350,9 +373,14 @@ function NotificationGate({ perm, onEnable, onRecheck, onLogout }) {
     body =
       'You previously blocked notifications. Please allow them for this site in your browser settings, then tap "I\'ve enabled it".';
     action = (
-      <button className="btn-primary btn-block" onClick={onRecheck}>
-        I&apos;ve enabled it — re-check
-      </button>
+      <>
+        <button className="btn-primary btn-block" onClick={onRecheck}>
+          I&apos;ve enabled it — re-check
+        </button>
+        <button className="btn-secondary btn-block mt-2" onClick={onDismiss}>
+          Continue without notifications
+        </button>
+      </>
     );
   } else if (perm === 'unsupported') {
     if (isIOS && !isStandalone) {
@@ -365,9 +393,14 @@ function NotificationGate({ perm, onEnable, onRecheck, onLogout }) {
         'Your current browser does not support notifications. Please open PeerPays in Chrome (Android) or install it to your home screen.';
     }
     action = (
-      <button className="btn-primary btn-block" onClick={onRecheck}>
-        Re-check
-      </button>
+      <>
+        <button className="btn-primary btn-block" onClick={onRecheck}>
+          Re-check
+        </button>
+        <button className="btn-secondary btn-block mt-2" onClick={onDismiss}>
+          Continue anyway
+        </button>
+      </>
     );
   }
 

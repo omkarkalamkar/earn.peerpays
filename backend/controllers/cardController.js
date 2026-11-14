@@ -12,6 +12,7 @@ function publicCard(card) {
   }
   return {
     _id: card._id,
+    cardName: card.cardName, // Optional nickname for the card
     bank: card.bank,
     network: card.network,
     type: card.type,
@@ -28,7 +29,7 @@ function publicCard(card) {
 
 /** Card holder adds a card. CVV is stored encrypted at the holder's request. */
 async function createCard(req, res) {
-  const { bank, network, type, holderName, number, expiryMonth, expiryYear, cvv } = req.body;
+  const { cardName, bank, network, type, holderName, number, expiryMonth, expiryYear, cvv } = req.body;
   if (!bank || !type || !holderName || !number || !expiryMonth || !expiryYear) {
     return res
       .status(400)
@@ -79,6 +80,7 @@ async function createCard(req, res) {
 
   const card = await Card.create({
     owner: req.user._id,
+    cardName: cardName || '', // Optional nickname
     bank,
     network: network || 'Other',
     type,

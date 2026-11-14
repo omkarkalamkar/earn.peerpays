@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
-import { Spinner } from '../../components/ui';
+import { Spinner, Modal } from '../../components/ui';
 import { useNotifications } from '../../context/NotificationContext';
 
 export default function HolderLedger() {
@@ -10,6 +10,10 @@ export default function HolderLedger() {
   const [ledger, setLedger] = useState(null);
   const [payments, setPayments] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reportIssueModal, setReportIssueModal] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState(null);
+  const [issueMessage, setIssueMessage] = useState('');
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -38,6 +42,35 @@ export default function HolderLedger() {
 
   const formatCurrency = (val) => `₹${(val || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
   const formatDate = (date) => new Date(date).toLocaleDateString('en-IN');
+
+  function openReportIssueModal(entry) {
+    setSelectedEntry(entry);
+    setIssueMessage('');
+    setReportIssueModal(true);
+  }
+
+  async function submitReportIssue(e) {
+    e.preventDefault();
+    if (!selectedEntry || !issueMessage.trim()) return;
+
+    setBusy(true);
+    try {
+      await api.post('/ledger/report-issue', {
+        entryType: selectedEntry.entryType,
+        entryId: selectedEntry._id,
+        message: issueMessage,
+      });
+      
+      pushToast('Issue reported to admin. They will contact you soon.');
+      setReportIssueModal(false);
+      setSelectedEntry(null);
+      setIssueMessage('');
+    } catch (err) {
+      pushToast(err.response?.data?.message || 'Failed to report issue');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading) return <Spinner />;
 
@@ -225,6 +258,12 @@ export default function HolderLedger() {
                         )}
                       </div>
                     </div>
+                    <button
+                      onClick={() => openReportIssueModal(entry)}
+                      className="mt-2 text-[11px] px-3 py-1.5 rounded bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 font-medium w-full"
+                    >
+                      ⚠️ Something incorrect? Report issue
+                    </button>
                   </div>
                 );
               })}
@@ -232,6 +271,75 @@ export default function HolderLedger() {
           );
         })()}
       </div>
+
+      {/* Report Issue Modal */}
+      <Modal
+        open={reportIssueModal}
+        onClose={() => {
+          setReportIssueModal(false);
+          setSelectedEntry(null);
+          setIssueMessage('');
+        }}
+        title="Report Issue"
+      >
+        <form onSubmit={submitReportIssue} className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded p-3">
+            <p className="text-sm font-medium text-amber-900">
+              ⚠️ Found something incorrect?
+            </p>
+            <p className="text-xs text-amber-700 mt-1">
+              Describe the issue and admin will review it. You'll be contacted soon.
+            </p>
+          </div>
+
+          {selectedEntry && (
+            <div className="bg-slate-50 border border-slate-200 rounded p-3">
+              <p className="text-xs text-slate-500">Entry Details:</p>
+              <p className="text-sm font-medium text-slate-900 mt-1">
+                {selectedEntry.entryType === 'order' 
+                  ? (selectedEntry.deal?.title || 'Order') 
+                  : `${selectedEntry.paymentMethod} Payment`}
+              </p>
+              <p className="text-sm text-slate-700 mt-0.5">
+                Amount: <strong>{formatCurrency(selectedEntry.amount)}</strong>
+              </p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Date: {new Date(selectedEntry.date).toLocaleDateString('en-IN')}
+              </p>
+            </div>
+          )}
+
+          <div>
+            <label className="label">Describe the issue *</label>
+            <textarea
+              className="input"
+              rows="4"
+              value={issueMessage}
+              onChange={(e) => setIssueMessage(e.target.value)}
+              placeholder="e.g., Amount seems incorrect, payment not received, etc."
+              required
+            />
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setReportIssueModal(false);
+                setSelectedEntry(null);
+                setIssueMessage('');
+              }}
+              className="btn-secondary flex-1"
+              disabled={busy}
+            >
+              Cancel
+            </button>
+            <button className="btn-primary flex-1" disabled={busy}>
+              {busy ? 'Submitting...' : 'Report Issue'}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

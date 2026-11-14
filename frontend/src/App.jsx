@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
+import InstallPrompt from './components/InstallPrompt';
 import { Spinner } from './components/ui';
 
 import Login from './pages/Login';
@@ -12,6 +13,7 @@ import AdminDeals from './pages/admin/AdminDeals';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminOrders from './pages/admin/AdminOrders';
 import AdminLedger from './pages/admin/AdminLedger';
+import AdminIssues from './pages/admin/AdminIssues';
 import AdminPayments from './pages/admin/AdminPayments';
 import HolderDeals from './pages/cardholder/HolderDeals';
 import HolderCards from './pages/cardholder/HolderCards';
@@ -31,9 +33,13 @@ function HomeRedirect() {
 }
 
 function Shell({ children, roles }) {
+  const { user } = useAuth();
+  
   return (
     <ProtectedRoute roles={roles}>
       <Layout>{children}</Layout>
+      {/* Show install prompt only when logged in */}
+      {user && <InstallPrompt />}
     </ProtectedRoute>
   );
 }
@@ -53,7 +59,7 @@ export default function App() {
             <Route path="/admin/users" element={<Shell roles={['admin', 'viewer']}><AdminUsers /></Shell>} />
             <Route path="/admin/orders" element={<Shell roles={['admin', 'viewer']}><AdminOrders /></Shell>} />
             <Route path="/admin/ledger" element={<Shell roles={['admin', 'viewer']}><AdminLedger /></Shell>} />
-            <Route path="/admin/payments" element={<Shell roles={['admin', 'viewer']}><AdminPayments /></Shell>} />
+            <Route path="/admin/issues" element={<Shell roles={['admin', 'viewer']}><AdminIssues /></Shell>} />
 
             <Route path="/holder" element={<Shell roles={['cardholder']}><HolderDeals /></Shell>} />
             <Route path="/holder/cards" element={<Shell roles={['cardholder']}><HolderCards /></Shell>} />

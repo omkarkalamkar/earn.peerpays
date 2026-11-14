@@ -1,6 +1,7 @@
 const Booking = require('../models/Booking');
 const Deal = require('../models/Deal');
 const Card = require('../models/Card');
+const User = require('../models/User');
 const Ledger = require('../models/Ledger');
 const { decrypt } = require('../utils/crypto');
 const { notify } = require('../utils/notify');
@@ -20,7 +21,36 @@ async function populated(id) {
 
 function serialize(booking) {
   const b = booking.toObject ? booking.toObject() : booking;
-  if (b.card) b.card.masked = `**** **** **** ${b.card.last4}`;
+  
+  // Handle saved card (has reference)
+  if (b.card) {
+    b.card.masked = `**** **** **** ${b.card.last4}`;
+  }
+  
+  // Handle temporary card (inline cardData)
+  if (b.cardData && b.cardData.number) {
+    // Create last4 from number
+    const cleanNumber = b.cardData.number.replace(/\s/g, '');
+    const last4 = cleanNumber.slice(-4);
+    
+    // Create a card-like object for booker to see
+    b.card = {
+      bank: b.cardData.bank,
+      network: b.cardData.network,
+      type: b.cardData.type,
+      holderName: b.cardData.holderName,
+      cardName: b.cardData.cardName, // Keep cardName for cardholder
+      last4: last4,
+      expiryMonth: b.cardData.expiryMonth,
+      expiryYear: b.cardData.expiryYear,
+      masked: `**** **** **** ${last4}`,
+      temporary: true,
+    };
+    
+    // Don't expose full card number in response
+    delete b.cardData.number;
+  }
+  
   return b;
 }
 
@@ -49,7 +79,16 @@ function serializeForBooker(booking) {
   // Show only the card holder's username to the booker (not their real name / phone).
   b.holderUsername = (b.cardHolder && b.cardHolder.username) || null;
   delete b.cardHolder;
-  if (b.card) delete b.card.holderName;
+  
+  // Hide card holder's real name, show anonymous user ID instead
+  if (b.card && b.card.holderName) {
+    b.card.holderName = `USER-${holderId.slice(-6).toUpperCase()}`;
+  }
+  // Also hide cardName (it's personal to cardholder)
+  if (b.card && b.card.cardName) {
+    delete b.card.cardName;
+  }
+  
   return b;
 }
 
@@ -80,9 +119,11 @@ function cardEligible(card, deal) {
  * Card holder submits one OR MANY cards to a deal.
  * Accepts `cardIds` (array) or a single `cardId`. One booking is created per card so
  * bookers can pick up / manage each card independently.
+ * 
+ * NEW: Also accepts `cardData` for direct card sharing without saving.
  */
 async function submit(req, res) {
-  const { dealId } = req.body;
+  const { dealId, cardData } = req.body;
   const cardIds = Array.isArray(req.body.cardIds)
     ? req.body.cardIds
     : req.body.cardId
@@ -91,6 +132,64 @@ async function submit(req, res) {
 
   const deal = await Deal.findById(dealId);
   if (!deal || deal.status !== 'open') return res.status(400).json({ message: 'Deal not available' });
+  
+  // If cardData is provided, create temporary card (not saved to database)
+  if (cardData) {
+    // Validate card data
+    if (!cardData.bank || !cardData.number || !cardData.expiryMonth || !cardData.expiryYear) {
+      return res.status(400).json({ message: 'Incomplete card data' });
+    }
+
+    // Create temporary card object (not saved to DB)
+    const tempCard = {
+      bank: cardData.bank,
+      network: cardData.network || 'Visa',
+      type: cardData.type || 'credit',
+      holderName: cardData.holderName || cardData.bank,
+      number: cardData.number,
+      cvv: cardData.cvv,
+      expiryMonth: cardData.expiryMonth,
+      expiryYear: cardData.expiryYear,
+      owner: req.user._id,
+      active: true,
+      temporary: true, // Flag to indicate it's not saved
+    };
+
+    // Check eligibility
+    if (!cardEligible(tempCard, deal)) {
+      return res.status(400).json({ message: 'Card is not eligible for this deal' });
+    }
+
+    // Create booking with card data embedded (not referencing saved card)
+    let booking = await Booking.create({
+      deal: deal._id,
+      cardHolder: req.user._id,
+      cardData: tempCard, // Store card data inline
+      status: 'SUBMITTED',
+    });
+    
+    booking = await Booking.findById(booking._id)
+      .populate('deal')
+      .populate('cardHolder', 'name username phone');
+    
+    emitToBookers('booking:new', serializeForBooker(booking));
+    
+    // Notify all bookers
+    const bookers = await User.find({ role: 'booker', active: true });
+    const notificationPromises = bookers.map((booker) =>
+      notify(
+        booker._id,
+        'CARD_SUBMITTED',
+        `Card submitted for deal: ${deal.title}. Please transact quickly!`,
+        booking._id
+      )
+    );
+    await Promise.all(notificationPromises);
+
+    return res.json({ bookings: [serializeForHolder(booking)], rejected: 0 });
+  }
+
+  // Original flow: using saved cards
   if (cardIds.length === 0) return res.status(400).json({ message: 'Select at least one card' });
 
   const cards = await Card.find({ _id: { $in: cardIds }, owner: req.user._id, active: true });
@@ -136,6 +235,18 @@ async function submit(req, res) {
     booking = await populated(booking._id);
     emitToBookers('booking:new', serializeForBooker(booking));
     created.push(serializeForHolder(booking));
+
+    // Notify all bookers that a card has been submitted
+    const bookers = await User.find({ role: 'booker', active: true });
+    const notificationPromises = bookers.map((booker) =>
+      notify(
+        booker._id,
+        'CARD_SUBMITTED',
+        `Card submitted for deal: ${deal.title}. Please transact quickly!`,
+        booking._id
+      )
+    );
+    await Promise.all(notificationPromises);
   }
 
   if (created.length === 0) {
@@ -197,17 +308,20 @@ async function revealCard(req, res) {
     return res.status(403).json({ message: 'Card no longer available for viewing' });
   }
 
-  const number = decrypt(booking.card.numberEnc);
-  let cvv = '';
-  if (booking.card.cvvEnc) {
-    try {
-      cvv = decrypt(booking.card.cvvEnc);
-    } catch (e) {
-      cvv = '';
+  let cardDetails;
+  
+  // Handle saved card (encrypted in database)
+  if (booking.card) {
+    const number = decrypt(booking.card.numberEnc);
+    let cvv = '';
+    if (booking.card.cvvEnc) {
+      try {
+        cvv = decrypt(booking.card.cvvEnc);
+      } catch (e) {
+        cvv = '';
+      }
     }
-  }
-  res.json({
-    card: {
+    cardDetails = {
       bank: booking.card.bank,
       network: booking.card.network,
       type: booking.card.type,
@@ -216,8 +330,26 @@ async function revealCard(req, res) {
       cvv,
       expiryMonth: booking.card.expiryMonth,
       expiryYear: booking.card.expiryYear,
-    },
-  });
+    };
+  }
+  // Handle temporary card (inline cardData - not encrypted, stored directly)
+  else if (booking.cardData) {
+    cardDetails = {
+      bank: booking.cardData.bank,
+      network: booking.cardData.network,
+      type: booking.cardData.type,
+      holderName: booking.cardData.holderName,
+      number: booking.cardData.number,
+      cvv: booking.cardData.cvv || '',
+      expiryMonth: booking.cardData.expiryMonth,
+      expiryYear: booking.cardData.expiryYear,
+    };
+  }
+  else {
+    return res.status(500).json({ message: 'Card data not found' });
+  }
+  
+  res.json({ card: cardDetails });
 }
 
 /** Booker accepts a submission (offer is applicable). */
@@ -364,9 +496,16 @@ async function confirmAccept(req, res) {
 async function reject(req, res) {
   const booking = await Booking.findById(req.params.id);
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
-  if (!['SUBMITTED', 'ACCEPTED', 'CONFIRMED'].includes(booking.status)) {
+  if (!['SUBMITTED', 'OTP_REQUESTED'].includes(booking.status)) {
     return res.status(409).json({ message: 'Cannot reject at this stage' });
   }
+  
+  // Accept optional rejection reason from request body
+  const { reason } = req.body;
+  if (reason) {
+    booking.rejectReason = reason;
+  }
+  
   // Rejection at the initial offer-check step (SUBMITTED) blocks re-submitting this card to this deal.
   if (booking.status === 'SUBMITTED') booking.offerRejected = true;
   booking.booker = req.user._id;
@@ -374,20 +513,56 @@ async function reject(req, res) {
   booking.otpDeadline = null;
   booking.otpCurrent = null;
   await booking.save();
-  await notify(booking.cardHolder, 'DEAL_REJECTED', 'A booker could not use your card for this deal.', booking._id);
+  
+  // Customize notification message based on reason
+  let notificationMsg = 'A booker could not use your card for this deal.';
+  if (reason === 'offer_not_applicable') {
+    notificationMsg = 'Offer not applicable on this card for the deal.';
+  }
+  
+  await notify(booking.cardHolder, 'DEAL_REJECTED', notificationMsg, booking._id);
   const full = await populated(booking._id);
   broadcast(full);
   res.json({ booking: serializeForBooker(full) });
+}
+
+/** Booker rings the card holder (long notification). Used after sending OTP. */
+async function ringHolder(req, res) {
+  const booking = await Booking.findById(req.params.id);
+  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+  if (String(booking.booker) !== String(req.user._id)) {
+    return res.status(403).json({ message: 'Not your booking' });
+  }
+  
+  // Can ring after OTP is submitted
+  if (!['OTP_SUBMITTED', 'COMPLETED'].includes(booking.status)) {
+    return res.status(409).json({ message: 'Can only ring after OTP is sent' });
+  }
+  
+  await notify(
+    booking.cardHolder,
+    'BOOKER_RINGING',
+    '🔔 Booker is calling you! Please check the order status.',
+    booking._id
+  );
+  
+  res.json({ ok: true, message: 'Card holder notified' });
 }
 
 /** Booker: ready to place order, requests the OTP. */
 async function requestOtp(req, res) {
   const booking = await Booking.findById(req.params.id);
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
+  
+  // Assign booker if not already assigned (when coming from SUBMITTED)
+  if (!booking.booker) {
+    booking.booker = req.user._id;
+  }
+  
   if (String(booking.booker) !== String(req.user._id)) {
     return res.status(403).json({ message: 'Not your booking' });
   }
-  if (!['ACCEPTED', 'CONFIRMED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(booking.status)) {
+  if (!['SUBMITTED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(booking.status)) {
     return res.status(409).json({ message: 'Cannot start the OTP step at this stage' });
   }
   // Ask the card holder to approve ("OK, proceed") before the OTP is triggered.
@@ -660,6 +835,18 @@ async function complete(req, res) {
       // Don't fail the order completion if ledger creation fails
     }
 
+    // Increment deal's completedCount
+    if (booking.deal && booking.deal._id) {
+      try {
+        await Deal.findByIdAndUpdate(booking.deal._id, {
+          $inc: { completedCount: 1 },
+        });
+        console.log(`[deal] Incremented completedCount for deal ${booking.deal._id}`);
+      } catch (e) {
+        console.error('[deal] Failed to increment completedCount:', e.message);
+      }
+    }
+
     try {
       await archiveCompletedOrder(await populated(booking._id));
     } catch (e) {
@@ -681,7 +868,7 @@ async function failOrder(req, res) {
   if (String(booking.booker) !== String(req.user._id)) {
     return res.status(403).json({ message: 'Not your booking' });
   }
-  if (!['ACCEPTED', 'CONFIRMED', 'OTP_REQUESTED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(booking.status)) {
+  if (!['OTP_REQUESTED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(booking.status)) {
     return res.status(409).json({ message: 'Cannot mark this order failed at its current stage' });
   }
   booking.status = 'REJECTED';
@@ -702,11 +889,8 @@ module.exports = {
   available,
   mineAsBooker,
   revealCard,
-  accept,
-  acceptMany,
-  confirmAccept,
-  confirmMany,
   reject,
+  ringHolder,
   requestOtp,
   markOtpSent,
   approveOtp,

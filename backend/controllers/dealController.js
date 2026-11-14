@@ -1,11 +1,34 @@
 const Deal = require('../models/Deal');
+const User = require('../models/User');
 const { emitToBookers } = require('../utils/socket');
+const { notify } = require('../utils/notify');
 
 /** Public-ish: any authenticated user can view open deals. Admin/viewer see all. */
 async function listDeals(req, res) {
   const filter = {};
-  if (!['admin', 'viewer'].includes(req.user.role)) filter.status = 'open';
-  const deals = await Deal.find(filter).sort({ createdAt: -1 });
+  if (!['admin', 'viewer'].includes(req.user.role)) {
+    filter.status = 'open';
+    
+    // For bookers: filter by assigned booker and quantity limits
+    if (req.user.role === 'booker') {
+      filter.$and = [
+        {
+          $or: [
+            { assignedBooker: null }, // Available to all bookers
+            { assignedBooker: req.user._id }, // Assigned to this booker
+          ],
+        },
+        {
+          $or: [
+            { quantity: -1 }, // Unlimited
+            { $expr: { $lt: ['$completedCount', '$quantity'] } }, // Still has quota
+          ],
+        },
+      ];
+    }
+  }
+  
+  const deals = await Deal.find(filter).sort({ createdAt: -1 }).populate('assignedBooker', 'name username');
   res.json({ deals });
 }
 
@@ -26,6 +49,8 @@ async function createDeal(req, res) {
     eligibleBanks,
     eligibleCardTypes,
     imageUrl,
+    assignedBooker,
+    quantity,
     commission = {},
   } = req.body;
 
@@ -54,6 +79,9 @@ async function createDeal(req, res) {
     eligibleBanks: eligibleBanks || [],
     eligibleCardTypes: eligibleCardTypes || [],
     imageUrl: imageUrl || '',
+    assignedBooker: assignedBooker || null,
+    quantity: quantity != null ? quantity : -1,
+    completedCount: 0,
     commission: {
       bookerTotal,
       adminShare,
@@ -63,6 +91,14 @@ async function createDeal(req, res) {
   });
 
   emitToBookers('deal:new', deal);
+
+  // Notify all cardholders about the new deal
+  const cardholders = await User.find({ role: 'cardholder', active: true });
+  const notificationPromises = cardholders.map((cardholder) =>
+    notify(cardholder._id, 'DEAL_POSTED', `New deal posted: ${title}`, deal._id)
+  );
+  await Promise.all(notificationPromises);
+
   res.status(201).json({ deal });
 }
 
@@ -81,6 +117,8 @@ async function updateDeal(req, res) {
     'eligibleCardTypes',
     'imageUrl',
     'status',
+    'assignedBooker',
+    'quantity',
   ];
 
   fields.forEach((f) => {

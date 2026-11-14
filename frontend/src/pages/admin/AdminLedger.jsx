@@ -77,11 +77,16 @@ export default function AdminLedger() {
   const [cardholders, setCardholders] = useState(null);
   const [bookers, setBookers] = useState(null);
   const [adminEarnings, setAdminEarnings] = useState(null);
+  const [adminLedger, setAdminLedger] = useState(null);
   const [payments, setPayments] = useState(null);
   const [selectedUserLedger, setSelectedUserLedger] = useState(null);
   const [ledgerDetailModal, setLedgerDetailModal] = useState(false);
   const [paymentModal, setPaymentModal] = useState(false);
   const [manualEntryModal, setManualEntryModal] = useState(false);
+  const [editLedgerEntryModal, setEditLedgerEntryModal] = useState(false);
+  const [editingLedgerEntry, setEditingLedgerEntry] = useState(null);
+  const [adminCommissionModal, setAdminCommissionModal] = useState(false);
+  const [editingCommissionId, setEditingCommissionId] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [paymentType, setPaymentType] = useState('given'); // 'given' or 'received'
   const [paymentForm, setPaymentForm] = useState({
@@ -93,6 +98,16 @@ export default function AdminLedger() {
   const [manualEntryForm, setManualEntryForm] = useState({
     amount: '',
     description: '',
+    notes: '',
+  });
+  const [ledgerEntryForm, setLedgerEntryForm] = useState({
+    amount: '',
+    description: '',
+    notes: '',
+  });
+  const [adminCommissionForm, setAdminCommissionForm] = useState({
+    description: '',
+    amount: '',
     notes: '',
   });
   const [busy, setBusy] = useState(false);
@@ -149,6 +164,9 @@ export default function AdminLedger() {
     try {
       const earnings = await api.get('/ledger/admin/earnings');
       setAdminEarnings(earnings.data);
+      
+      const ledger = await api.get('/ledger/admin/commission-ledger');
+      setAdminLedger(ledger.data);
     } catch (err) {
       pushToast(err.response?.data?.message || 'Failed to load admin earnings');
     }
@@ -249,6 +267,103 @@ export default function AdminLedger() {
     }
   }
 
+  function openEditLedgerEntry(entry) {
+    setEditingLedgerEntry(entry);
+    setLedgerEntryForm({
+      amount: entry.amount || '',
+      description: entry.description || '',
+      notes: entry.notes || '',
+    });
+    setEditLedgerEntryModal(true);
+  }
+
+  async function submitEditLedgerEntry(e) {
+    e.preventDefault();
+    if (!editingLedgerEntry || !ledgerEntryForm.amount) return;
+
+    setBusy(true);
+    try {
+      await api.put(`/ledger/ledger-entry/${editingLedgerEntry._id}`, {
+        amount: parseFloat(ledgerEntryForm.amount),
+        description: ledgerEntryForm.description,
+        notes: ledgerEntryForm.notes,
+      });
+      
+      pushToast('Entry updated');
+      setEditLedgerEntryModal(false);
+      setLedgerEntryForm({ amount: '', description: '', notes: '' });
+      setEditingLedgerEntry(null);
+      
+      // Refresh data
+      setLedgerDetailModal(false);
+      setSelectedUserLedger(null);
+      if (tab === 'cardholder') loadCardholders();
+      if (tab === 'booker') loadBookers();
+    } catch (err) {
+      pushToast(err.response?.data?.message || 'Failed to update entry');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openAdminCommissionModal(entry = null) {
+    if (entry) {
+      setEditingCommissionId(entry._id);
+      setAdminCommissionForm({
+        description: entry.description || '',
+        amount: entry.amount || '',
+        notes: entry.notes || '',
+      });
+    } else {
+      setEditingCommissionId(null);
+      setAdminCommissionForm({ description: '', amount: '', notes: '' });
+    }
+    setAdminCommissionModal(true);
+  }
+
+  async function submitAdminCommission(e) {
+    e.preventDefault();
+    if (!adminCommissionForm.amount || !adminCommissionForm.description) return;
+
+    setBusy(true);
+    try {
+      const payload = {
+        description: adminCommissionForm.description,
+        amount: parseFloat(adminCommissionForm.amount),
+        notes: adminCommissionForm.notes,
+      };
+
+      if (editingCommissionId) {
+        await api.put(`/ledger/ledger-entry/${editingCommissionId}`, payload);
+        pushToast('Commission entry updated');
+      } else {
+        await api.post('/ledger/admin/commission-ledger', payload);
+        pushToast('Commission entry added');
+      }
+      
+      setAdminCommissionModal(false);
+      setAdminCommissionForm({ description: '', amount: '', notes: '' });
+      setEditingCommissionId(null);
+      loadAdminEarnings();
+    } catch (err) {
+      pushToast(err.response?.data?.message || 'Failed to save entry');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteAdminCommission(entry) {
+    if (!confirm(`Delete this commission entry: "${entry.description}"?`)) return;
+    
+    try {
+      await api.delete(`/ledger/admin/commission-ledger/${entry._id}`);
+      pushToast('Commission entry deleted');
+      loadAdminEarnings();
+    } catch (err) {
+      pushToast(err.response?.data?.message || 'Failed to delete');
+    }
+  }
+
   async function openLedgerDetail(user) {
     try {
       let ledgerRes, paymentsRes;
@@ -332,6 +447,7 @@ export default function AdminLedger() {
             setCardholders(null);
             setBookers(null);
             setAdminEarnings(null);
+            setAdminLedger(null);
             if (tab === 'cardholder') loadCardholders();
             if (tab === 'booker') loadBookers();
             if (tab === 'admin') {
@@ -614,6 +730,98 @@ export default function AdminLedger() {
                 </div>
               </div>
 
+              {/* Commission Ledger */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-slate-900">Commission Ledger</h3>
+                  {!readOnly && (
+                    <button
+                      onClick={() => openAdminCommissionModal()}
+                      className="btn-primary btn-sm"
+                    >
+                      + Add Entry
+                    </button>
+                  )}
+                </div>
+                {adminLedger && adminLedger.ledgers && adminLedger.ledgers.length > 0 ? (
+                  <div className="rounded-lg border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Date</th>
+                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Description</th>
+                            <th className="px-4 py-3 text-left font-semibold text-slate-700">Deal</th>
+                            <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
+                            {!readOnly && <th className="px-4 py-3 text-center font-semibold text-slate-700">Action</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adminLedger.ledgers.map((entry) => (
+                            <tr key={entry._id} className="border-b border-slate-100 hover:bg-slate-50">
+                              <td className="px-4 py-3 text-slate-600 text-xs">
+                                {new Date(entry.createdAt).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-slate-900">{entry.description || 'Commission'}</p>
+                                {entry.notes && <p className="text-xs text-slate-500 mt-1">{entry.notes}</p>}
+                              </td>
+                              <td className="px-4 py-3">
+                                {entry.deal ? (
+                                  <div>
+                                    <p className="text-slate-900 text-xs">{entry.deal.title}</p>
+                                    <p className="text-slate-500 text-xs capitalize">{entry.deal.platform}</p>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 text-xs">-</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                                {formatCurrency(entry.amount)}
+                              </td>
+                              {!readOnly && (
+                                <td className="px-4 py-3 text-center">
+                                  <div className="flex gap-1 justify-center">
+                                    <button
+                                      onClick={() => openAdminCommissionModal(entry)}
+                                      className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
+                                    >
+                                      ✏️ Edit
+                                    </button>
+                                    <button
+                                      onClick={() => deleteAdminCommission(entry)}
+                                      className="text-xs px-2 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-medium"
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 p-8 text-center">
+                    <p className="text-slate-500 mb-3">No commission entries yet</p>
+                    {!readOnly && (
+                      <button
+                        onClick={() => openAdminCommissionModal()}
+                        className="btn-primary btn-sm"
+                      >
+                        + Add First Entry
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Payment History */}
               <div>
                 <h3 className="font-semibold text-slate-900 mb-3">Payment History</h3>
@@ -837,29 +1045,39 @@ export default function AdminLedger() {
                               </p>
                             )}
                             {!readOnly && (
-                              <button
-                                onClick={async () => {
-                                  if (!confirm('Delete this entry? This cannot be undone.')) return;
-                                  try {
-                                    if (isOrder) {
-                                      await api.delete(`/ledger/ledger-entry/${entry._id}`);
-                                    } else {
-                                      await api.delete(`/ledger/payment/${entry._id}`);
+                              <div className="flex gap-1">
+                                {isOrder && (
+                                  <button
+                                    onClick={() => openEditLedgerEntry(entry)}
+                                    className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                  >
+                                    ✏️ Edit
+                                  </button>
+                                )}
+                                <button
+                                  onClick={async () => {
+                                    if (!confirm('Delete this entry? This cannot be undone.')) return;
+                                    try {
+                                      if (isOrder) {
+                                        await api.delete(`/ledger/ledger-entry/${entry._id}`);
+                                      } else {
+                                        await api.delete(`/ledger/payment/${entry._id}`);
+                                      }
+                                      pushToast('Entry deleted');
+                                      // Refresh data
+                                      setLedgerDetailModal(false);
+                                      setSelectedUserLedger(null);
+                                      if (tab === 'cardholder') loadCardholders();
+                                      if (tab === 'booker') loadBookers();
+                                    } catch (err) {
+                                      pushToast(err.response?.data?.message || 'Failed to delete');
                                     }
-                                    pushToast('Entry deleted');
-                                    // Refresh data
-                                    setLedgerDetailModal(false);
-                                    setSelectedUserLedger(null);
-                                    if (tab === 'cardholder') loadCardholders();
-                                    if (tab === 'booker') loadBookers();
-                                  } catch (err) {
-                                    pushToast(err.response?.data?.message || 'Failed to delete');
-                                  }
-                                }}
-                                className="text-xs px-2 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100"
-                              >
-                                🗑️ Delete
-                              </button>
+                                  }}
+                                  className="text-xs px-2 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -940,6 +1158,138 @@ export default function AdminLedger() {
 
           <button className="btn-primary btn-block" disabled={busy}>
             {busy ? 'Adding...' : 'Add Entry'}
+          </button>
+        </form>
+      </Modal>
+
+      {/* Edit Ledger Entry Modal */}
+      <Modal
+        open={editLedgerEntryModal}
+        onClose={() => {
+          setEditLedgerEntryModal(false);
+          setLedgerEntryForm({ amount: '', description: '', notes: '' });
+          setEditingLedgerEntry(null);
+        }}
+        title="Edit Ledger Entry"
+      >
+        <form onSubmit={submitEditLedgerEntry} className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded p-3 mb-4">
+            <p className="text-sm font-medium text-blue-900">
+              ✏️ Update Ledger Entry
+            </p>
+            <p className="text-xs text-blue-700 mt-1">
+              Modify the amount, description, or notes for this entry.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">
+              Description *
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={ledgerEntryForm.description}
+              onChange={(e) => setLedgerEntryForm({ ...ledgerEntryForm, description: e.target.value })}
+              placeholder="Entry description"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="label">
+              Amount (₹) *
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              className="input"
+              value={ledgerEntryForm.amount}
+              onChange={(e) => setLedgerEntryForm({ ...ledgerEntryForm, amount: e.target.value })}
+              placeholder="Enter amount"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="label">Notes (optional)</label>
+            <textarea
+              className="input"
+              rows="3"
+              value={ledgerEntryForm.notes}
+              onChange={(e) => setLedgerEntryForm({ ...ledgerEntryForm, notes: e.target.value })}
+              placeholder="Any additional notes..."
+            />
+          </div>
+
+          <button className="btn-primary btn-block" disabled={busy}>
+            {busy ? 'Updating...' : 'Update Entry'}
+          </button>
+        </form>
+      </Modal>
+
+      {/* Admin Commission Modal */}
+      <Modal
+        open={adminCommissionModal}
+        onClose={() => {
+          setAdminCommissionModal(false);
+          setAdminCommissionForm({ description: '', amount: '', notes: '' });
+          setEditingCommissionId(null);
+        }}
+        title={editingCommissionId ? 'Edit Commission Entry' : 'Add Commission Entry'}
+      >
+        <form onSubmit={submitAdminCommission} className="space-y-4">
+          <div className="bg-brand-50 border border-brand-200 rounded p-3 mb-4">
+            <p className="text-sm font-medium text-brand-900">
+              💰 {editingCommissionId ? 'Update' : 'Add'} Admin Commission Entry
+            </p>
+            <p className="text-xs text-brand-700 mt-1">
+              Use this to record manual commission adjustments or corrections.
+            </p>
+          </div>
+
+          <div>
+            <label className="label">
+              Description *
+            </label>
+            <input
+              type="text"
+              className="input"
+              value={adminCommissionForm.description}
+              onChange={(e) => setAdminCommissionForm({ ...adminCommissionForm, description: e.target.value })}
+              placeholder="e.g., Manual commission, Adjustment"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="label">
+              Amount (₹) *
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              className="input"
+              value={adminCommissionForm.amount}
+              onChange={(e) => setAdminCommissionForm({ ...adminCommissionForm, amount: e.target.value })}
+              placeholder="Enter amount"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="label">Notes (optional)</label>
+            <textarea
+              className="input"
+              rows="3"
+              value={adminCommissionForm.notes}
+              onChange={(e) => setAdminCommissionForm({ ...adminCommissionForm, notes: e.target.value })}
+              placeholder="Any additional notes..."
+            />
+          </div>
+
+          <button className="btn-primary btn-block" disabled={busy}>
+            {busy ? 'Saving...' : editingCommissionId ? 'Update Entry' : 'Add Entry'}
           </button>
         </form>
       </Modal>

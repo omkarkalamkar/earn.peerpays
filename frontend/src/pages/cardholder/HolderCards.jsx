@@ -5,6 +5,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { BANKS } from '../../constants';
 
 const EMPTY = {
+  cardName: '',
   bank: '',
   network: 'Visa',
   type: 'credit',
@@ -111,7 +112,12 @@ export default function HolderCards() {
             >
               {/* Card Header */}
               <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider">{c.bank}</span>
+                <div className="flex-1">
+                  <span className="text-xs font-bold uppercase tracking-wider">{c.bank}</span>
+                  {c.cardName && (
+                    <p className="text-xs text-white/80 mt-0.5 truncate">{c.cardName}</p>
+                  )}
+                </div>
                 <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-white/20">{c.type}</span>
               </div>
               
@@ -189,6 +195,18 @@ export default function HolderCards() {
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Card Nickname (Optional) */}
+          <div>
+            <label className="label">Card Nickname (Optional)</label>
+            <input
+              className="input"
+              placeholder="e.g., My SBI Card, Dad's HDFC"
+              value={form.cardName}
+              onChange={(e) => setForm({ ...form, cardName: e.target.value })}
+            />
+            <p className="text-xs text-slate-500 mt-1">Give this card a name for easy identification. Only visible to you.</p>
           </div>
 
           {/* Card Number */}

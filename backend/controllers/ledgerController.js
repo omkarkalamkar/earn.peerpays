@@ -1,6 +1,7 @@
 const Ledger = require('../models/Ledger');
 const Payment = require('../models/Payment');
 const Booking = require('../models/Booking');
+const Issue = require('../models/Issue');
 const User = require('../models/User');
 
 /**
@@ -134,18 +135,31 @@ async function getCardholderDue(req, res) {
     return res.status(404).json({ message: 'Card holder not found' });
   }
 
-  const entries = await Ledger.find({ user: id, type: 'cardholder_earning' });
+  const entries = await Ledger.find({ user: id, type: 'cardholder_earning' }).sort({ updatedAt: -1 });
   // Total earnings = full ledger amount (order price + commission)
   const totalEarnings = entries.reduce((sum, e) => sum + (e.amount || 0), 0);
 
   const payments = await Payment.find({
     recipient: id,
     status: { $in: ['completed', 'pending'] },
-  });
+  }).sort({ updatedAt: -1 });
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
 
   // Allow negative balance (overpaid)
   const due = totalEarnings - totalPaid;
+  
+  // Get last updated timestamp from most recent ledger entry or payment
+  let lastUpdated = null;
+  if (entries.length > 0 || payments.length > 0) {
+    const lastEntry = entries[0]?.updatedAt;
+    const lastPayment = payments[0]?.updatedAt;
+    
+    if (lastEntry && lastPayment) {
+      lastUpdated = new Date(Math.max(new Date(lastEntry), new Date(lastPayment)));
+    } else {
+      lastUpdated = lastEntry || lastPayment;
+    }
+  }
 
   res.json({
     userId: id,
@@ -155,6 +169,7 @@ async function getCardholderDue(req, res) {
     totalEarnings,
     totalPaid,
     due, // Can be negative
+    lastUpdated,
     currency: 'INR',
   });
 }
@@ -226,17 +241,30 @@ async function getBookerDue(req, res) {
     return res.status(404).json({ message: 'Booker not found' });
   }
 
-  const entries = await Ledger.find({ user: id, type: 'booker_transaction' });
+  const entries = await Ledger.find({ user: id, type: 'booker_transaction' }).sort({ updatedAt: -1 });
   const totalEarnings = entries.reduce((sum, e) => sum + e.amount, 0);
 
   const payments = await Payment.find({
     recipient: id,
     status: { $in: ['completed', 'pending'] },
-  });
+  }).sort({ updatedAt: -1 });
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
 
   // Allow negative balance (overpaid)
   const due = totalEarnings - totalPaid;
+  
+  // Get last updated timestamp from most recent ledger entry or payment
+  let lastUpdated = null;
+  if (entries.length > 0 || payments.length > 0) {
+    const lastEntry = entries[0]?.updatedAt;
+    const lastPayment = payments[0]?.updatedAt;
+    
+    if (lastEntry && lastPayment) {
+      lastUpdated = new Date(Math.max(new Date(lastEntry), new Date(lastPayment)));
+    } else {
+      lastUpdated = lastEntry || lastPayment;
+    }
+  }
 
   res.json({
     userId: id,
@@ -246,6 +274,7 @@ async function getBookerDue(req, res) {
     totalEarnings,
     totalPaid,
     due, // Can be negative
+    lastUpdated,
     currency: 'INR',
   });
 }
@@ -337,6 +366,60 @@ async function getAdminEarnings(req, res) {
     count: adminLedgers.length,
     currency: 'INR',
   });
+}
+
+/**
+ * Get admin commission ledger entries (admin only)
+ */
+async function getAdminCommissionLedger(req, res) {
+  const ledgers = await Ledger.find({ type: 'admin_earning' })
+    .populate('booking')
+    .populate('deal', 'title platform')
+    .sort({ createdAt: -1 });
+  
+  const total = ledgers.reduce((sum, e) => sum + (e.amount || 0), 0);
+  
+  res.json({ ledgers, total, count: ledgers.length });
+}
+
+/**
+ * Create manual admin commission entry (admin only)
+ */
+async function createAdminCommissionEntry(req, res) {
+  const { description, amount, notes } = req.body;
+  
+  if (!description || !amount) {
+    return res.status(400).json({ message: 'Description and amount are required' });
+  }
+  
+  const ledger = await Ledger.create({
+    user: req.user._id,
+    type: 'admin_earning',
+    description,
+    amount: Number(amount),
+    notes: notes || '',
+    status: 'confirmed',
+  });
+  
+  res.status(201).json({ ledger });
+}
+
+/**
+ * Delete admin commission entry (admin only)
+ */
+async function deleteAdminCommissionEntry(req, res) {
+  const ledger = await Ledger.findById(req.params.id);
+  
+  if (!ledger) {
+    return res.status(404).json({ message: 'Ledger entry not found' });
+  }
+  
+  if (ledger.type !== 'admin_earning') {
+    return res.status(403).json({ message: 'Can only delete admin commission entries' });
+  }
+  
+  await Ledger.deleteOne({ _id: ledger._id });
+  res.json({ ok: true });
 }
 
 /**
@@ -477,6 +560,33 @@ async function getMyPayments(req, res) {
 module.exports.getMyPayments = getMyPayments;
 
 /**
+ * Update a ledger entry (admin only)
+ */
+async function updateLedgerEntry(req, res) {
+  const { id } = req.params;
+  const { amount, description, notes } = req.body;
+
+  try {
+    const entry = await Ledger.findById(id);
+    if (!entry) {
+      return res.status(404).json({ message: 'Ledger entry not found' });
+    }
+
+    // Update fields
+    if (amount !== undefined) entry.amount = amount;
+    if (description !== undefined) entry.description = description;
+    if (notes !== undefined) entry.notes = notes;
+
+    await entry.save();
+
+    res.json({ message: 'Ledger entry updated successfully', entry });
+  } catch (err) {
+    console.error('Error updating ledger entry:', err);
+    res.status(500).json({ message: 'Failed to update ledger entry' });
+  }
+}
+
+/**
  * Delete a ledger entry (admin only)
  */
 async function deleteLedgerEntry(req, res) {
@@ -506,8 +616,109 @@ async function deletePayment(req, res) {
   res.json({ message: 'Payment deleted successfully' });
 }
 
+/**
+ * Report an issue with a ledger entry or payment (cardholder/booker)
+ */
+async function reportIssue(req, res) {
+  const { entryType, entryId, message } = req.body;
+
+  try {
+    if (!['order', 'payment'].includes(entryType)) {
+      return res.status(400).json({ message: 'Invalid entry type' });
+    }
+
+    if (!message || message.trim().length === 0) {
+      return res.status(400).json({ message: 'Message is required' });
+    }
+
+    // Verify the entry exists and belongs to the user
+    if (entryType === 'order') {
+      const entry = await Ledger.findById(entryId);
+      if (!entry) {
+        return res.status(404).json({ message: 'Entry not found' });
+      }
+      if (entry.user.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+    } else if (entryType === 'payment') {
+      const payment = await Payment.findById(entryId);
+      if (!payment) {
+        return res.status(404).json({ message: 'Payment not found' });
+      }
+      if (payment.recipient.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+    }
+
+    const issue = await Issue.create({
+      reportedBy: req.user._id,
+      entryType,
+      entryId,
+      message: message.trim(),
+    });
+
+    res.json({ message: 'Issue reported successfully', issue });
+  } catch (err) {
+    console.error('Error reporting issue:', err);
+    res.status(500).json({ message: 'Failed to report issue' });
+  }
+}
+
+/**
+ * Get all reported issues (admin only)
+ */
+async function getReportedIssues(req, res) {
+  try {
+    const issues = await Issue.find()
+      .populate('reportedBy', 'name username role')
+      .sort({ createdAt: -1 });
+
+    res.json(issues);
+  } catch (err) {
+    console.error('Error fetching issues:', err);
+    res.status(500).json({ message: 'Failed to fetch issues' });
+  }
+}
+
+/**
+ * Resolve or dismiss an issue (admin only)
+ */
+async function updateIssueStatus(req, res) {
+  const { id } = req.params;
+  const { status, adminNotes } = req.body;
+
+  try {
+    if (!['resolved', 'dismissed', 'pending'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const issue = await Issue.findById(id);
+    if (!issue) {
+      return res.status(404).json({ message: 'Issue not found' });
+    }
+
+    issue.status = status;
+    if (adminNotes) issue.adminNotes = adminNotes;
+    if (status === 'resolved') issue.resolvedAt = new Date();
+
+    await issue.save();
+
+    res.json({ message: 'Issue status updated', issue });
+  } catch (err) {
+    console.error('Error updating issue status:', err);
+    res.status(500).json({ message: 'Failed to update issue status' });
+  }
+}
+
+module.exports.updateLedgerEntry = updateLedgerEntry;
 module.exports.deleteLedgerEntry = deleteLedgerEntry;
 module.exports.deletePayment = deletePayment;
+module.exports.reportIssue = reportIssue;
+module.exports.getReportedIssues = getReportedIssues;
+module.exports.updateIssueStatus = updateIssueStatus;
+module.exports.getAdminCommissionLedger = getAdminCommissionLedger;
+module.exports.createAdminCommissionEntry = createAdminCommissionEntry;
+module.exports.deleteAdminCommissionEntry = deleteAdminCommissionEntry;
 
 /**
  * Manually add a ledger entry (admin only)

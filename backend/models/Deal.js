@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const PLATFORMS = ['Amazon', 'Flipkart'];
+const PLATFORMS = ['Amazon', 'Flipkart', 'Croma', 'Reliance Digital', 'Swiggy', 'Zepto', 'Blinkit', 'BigBasket', 'Others'];
 
 const dealSchema = new mongoose.Schema(
   {
@@ -18,6 +18,11 @@ const dealSchema = new mongoose.Schema(
     // expired-> soft-deleted; hidden from everyone except admin, can be hard-deleted later
     status: { type: String, enum: ['open', 'closed', 'expired'], default: 'open' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+
+    // Deal assignment and quantity limits
+    assignedBooker: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }, // null = visible to all bookers
+    quantity: { type: Number, default: -1 }, // -1 = unlimited, >0 = max completed orders allowed
+    completedCount: { type: Number, default: 0 }, // Track completed bookings for this deal
 
     // Commission structure for this deal
     // Example: booker pays 1500 total commission

@@ -16,6 +16,8 @@ const EMPTY = {
   eligibleCardTypes: [],
   imageUrl: '',
   status: 'open',
+  assignedBooker: '',
+  quantity: -1,
   commission: {
     bookerTotal: '',
     adminShare: '',
@@ -28,6 +30,7 @@ export default function AdminDeals() {
   const { user } = useAuth();
   const readOnly = user?.role === 'viewer';
   const [deals, setDeals] = useState(null);
+  const [bookers, setBookers] = useState([]);
   const [modal, setModal] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [editId, setEditId] = useState(null);
@@ -36,7 +39,21 @@ export default function AdminDeals() {
   function load() {
     api.get('/deals').then((res) => setDeals(res.data.deals));
   }
-  useEffect(load, []);
+  
+  function loadBookers() {
+    api.get('/admin/users').then((res) => {
+      const bookerList = res.data.users.filter(u => u.role === 'booker' && u.active);
+      setBookers(bookerList);
+    }).catch((err) => {
+      console.error('Failed to load bookers:', err);
+      setBookers([]);
+    });
+  }
+  
+  useEffect(() => {
+    load();
+    loadBookers();
+  }, []);
 
   function openCreate() {
     setForm(EMPTY);
@@ -49,6 +66,8 @@ export default function AdminDeals() {
       ...d,
       eligibleBanks: d.eligibleBanks || [],
       eligibleCardTypes: d.eligibleCardTypes || [],
+      assignedBooker: d.assignedBooker?._id || d.assignedBooker || '',
+      quantity: d.quantity != null ? d.quantity : -1,
       commission: d.commission || {
         bookerTotal: '',
         adminShare: '',
@@ -97,6 +116,8 @@ export default function AdminDeals() {
       price: Number(form.price),
       profit: Number(form.profit) || 0,
       eligibleBanks: form.eligibleBanks,
+      assignedBooker: form.assignedBooker || null,
+      quantity: Number(form.quantity),
       commission: {
         bookerTotal,
         adminShare,
@@ -151,7 +172,7 @@ export default function AdminDeals() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-navy-900 sm:text-2xl">Deals</h1>
-          <p className="text-sm text-slate-500">Post and manage Amazon/Flipkart mobile deals.</p>
+          <p className="text-sm text-slate-500">Post and manage deals from various platforms.</p>
         </div>
         {!readOnly && (
           <button className="btn-primary" onClick={openCreate}>
@@ -192,6 +213,34 @@ export default function AdminDeals() {
                   Profit: {money(d.profit)}
                 </p>
               )}
+              
+              {/* Quantity Progress */}
+              {d.quantity > 0 && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600">
+                      {d.completedCount || 0}/{d.quantity} completed
+                    </span>
+                    <span className={`font-semibold ${d.completedCount >= d.quantity ? 'text-red-600' : 'text-brand-600'}`}>
+                      {d.completedCount >= d.quantity ? '✓ Full' : `${d.quantity - (d.completedCount || 0)} left`}
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all ${d.completedCount >= d.quantity ? 'bg-red-500' : 'bg-brand-500'}`}
+                      style={{ width: `${Math.min(100, ((d.completedCount || 0) / d.quantity) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Assigned Booker */}
+              {d.assignedBooker && (
+                <p className="mt-2 text-xs text-slate-500">
+                  📌 Assigned to: {d.assignedBooker.name || d.assignedBooker.username}
+                </p>
+              )}
+              
               {d.offerDetails && <p className="mt-1.5 line-clamp-2 text-[13px] text-slate-500">{d.offerDetails}</p>}
               <div className="mt-2 flex flex-wrap gap-1">
                 {(d.eligibleBanks || []).map((b) => (
@@ -238,6 +287,13 @@ export default function AdminDeals() {
               <select className="input" value={form.platform} onChange={(e) => setForm({ ...form, platform: e.target.value })}>
                 <option>Amazon</option>
                 <option>Flipkart</option>
+                <option>Croma</option>
+                <option>Reliance Digital</option>
+                <option>Swiggy</option>
+                <option>Zepto</option>
+                <option>Blinkit</option>
+                <option>BigBasket</option>
+                <option>Others</option>
               </select>
             </div>
             <div>
@@ -258,25 +314,43 @@ export default function AdminDeals() {
             <textarea className="input" rows={2} value={form.offerDetails} onChange={(e) => setForm({ ...form, offerDetails: e.target.value })} />
           </div>
 
+          {/* Deal Assignment & Quantity */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Assign to Booker</label>
+              <select 
+                className="input" 
+                value={form.assignedBooker || ''} 
+                onChange={(e) => setForm({ ...form, assignedBooker: e.target.value })}
+              >
+                <option value="">All Bookers (visible to everyone)</option>
+                {bookers.map((b) => (
+                  <option key={b._id} value={b._id}>
+                    {b.name} (@{b.username})
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">Leave blank to show deal to all bookers</p>
+            </div>
+            <div>
+              <label className="label">Quantity Limit</label>
+              <input 
+                type="number" 
+                className="input" 
+                placeholder="-1 = unlimited"
+                value={form.quantity} 
+                onChange={(e) => setForm({ ...form, quantity: e.target.value })} 
+              />
+              <p className="mt-1 text-xs text-slate-400">-1 = unlimited, {'>'}0 = max completed orders</p>
+            </div>
+          </div>
+
           {/* Commission Section */}
           <div className="rounded-lg border border-brand-200 bg-brand-50 p-4 space-y-3">
             <h3 className="font-semibold text-brand-900">Commission Structure</h3>
-            <p className="text-xs text-brand-700">How much commission you're getting from the booker and how much to give the card holder</p>
+            <p className="text-xs text-brand-700">Enter any 2 values, the 3rd will auto-calculate</p>
             
             <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="label text-xs">Total from Booker (₹)</label>
-                <input 
-                  type="number" 
-                  className="input text-sm"
-                  placeholder="e.g., 500"
-                  value={form.commission?.bookerTotal || ''} 
-                  onChange={(e) => setForm({ 
-                    ...form, 
-                    commission: { ...form.commission, bookerTotal: e.target.value }
-                  })} 
-                />
-              </div>
               <div>
                 <label className="label text-xs">Your Share (₹)</label>
                 <input 
@@ -284,10 +358,18 @@ export default function AdminDeals() {
                   className="input text-sm"
                   placeholder="e.g., 250"
                   value={form.commission?.adminShare || ''} 
-                  onChange={(e) => setForm({ 
-                    ...form, 
-                    commission: { ...form.commission, adminShare: e.target.value }
-                  })} 
+                  onChange={(e) => {
+                    const adminShare = Number(e.target.value) || 0;
+                    const cardholderShare = Number(form.commission?.cardholderShare) || 0;
+                    setForm({ 
+                      ...form, 
+                      commission: { 
+                        adminShare: e.target.value,
+                        cardholderShare: form.commission?.cardholderShare || '',
+                        bookerTotal: adminShare + cardholderShare,
+                      }
+                    });
+                  }} 
                 />
               </div>
               <div>
@@ -297,17 +379,36 @@ export default function AdminDeals() {
                   className="input text-sm"
                   placeholder="e.g., 250"
                   value={form.commission?.cardholderShare || ''} 
-                  onChange={(e) => setForm({ 
-                    ...form, 
-                    commission: { ...form.commission, cardholderShare: e.target.value }
-                  })} 
+                  onChange={(e) => {
+                    const cardholderShare = Number(e.target.value) || 0;
+                    const adminShare = Number(form.commission?.adminShare) || 0;
+                    setForm({ 
+                      ...form, 
+                      commission: { 
+                        adminShare: form.commission?.adminShare || '',
+                        cardholderShare: e.target.value,
+                        bookerTotal: adminShare + cardholderShare,
+                      }
+                    });
+                  }} 
+                />
+              </div>
+              <div>
+                <label className="label text-xs">Total from Booker (₹)</label>
+                <input 
+                  type="number" 
+                  className="input text-sm bg-slate-100"
+                  placeholder="Auto-calculated"
+                  value={form.commission?.bookerTotal || ''} 
+                  readOnly
+                  title="Auto-calculated: Your Share + Holder's Share"
                 />
               </div>
             </div>
             
-            {form.commission?.bookerTotal && (
+            {form.commission?.bookerTotal > 0 && (
               <div className="text-xs text-brand-700 bg-white p-2 rounded border border-brand-100">
-                <p><strong>Breakdown:</strong> {form.commission?.bookerTotal || 0} = {form.commission?.adminShare || 0} (you) + {form.commission?.cardholderShare || 0} (holder)</p>
+                <p><strong>Total:</strong> ₹{form.commission?.bookerTotal || 0} = ₹{form.commission?.adminShare || 0} (you) + ₹{form.commission?.cardholderShare || 0} (holder)</p>
               </div>
             )}
           </div>

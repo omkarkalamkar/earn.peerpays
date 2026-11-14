@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 
 const STATUS_STYLES = {
   SUBMITTED: 'bg-amber-100 text-amber-700',
-  ACCEPTED: 'bg-blue-100 text-blue-700',
-  CONFIRMED: 'bg-teal-100 text-teal-700',
   OTP_REQUESTED: 'bg-purple-100 text-purple-700',
   OTP_APPROVED: 'bg-indigo-100 text-indigo-700',
   OTP_SUBMITTED: 'bg-cyan-100 text-cyan-700',
@@ -14,8 +12,6 @@ const STATUS_STYLES = {
 
 const STATUS_LABELS = {
   SUBMITTED: 'Waiting for booker',
-  ACCEPTED: 'Accepted',
-  CONFIRMED: 'Accepted',
   OTP_REQUESTED: 'Placing order',
   OTP_APPROVED: 'Awaiting OTP',
   OTP_SUBMITTED: 'OTP shared',
@@ -33,8 +29,76 @@ export function StatusBadge({ status }) {
 }
 
 export function PlatformBadge({ platform }) {
-  const cls = platform === 'Amazon' ? 'bg-orange-100 text-orange-700' : 'bg-sky-100 text-sky-700';
-  return <span className={`chip ${cls}`}>{platform}</span>;
+  const platformConfig = {
+    'Amazon': { 
+      bg: 'bg-orange-50', 
+      text: 'text-orange-700',
+      border: 'border-orange-200',
+      icon: '📦'
+    },
+    'Flipkart': { 
+      bg: 'bg-blue-50', 
+      text: 'text-blue-700',
+      border: 'border-blue-200',
+      icon: '🛒'
+    },
+    'Croma': { 
+      bg: 'bg-green-50', 
+      text: 'text-green-700',
+      border: 'border-green-200',
+      icon: '🏪'
+    },
+    'Reliance Digital': { 
+      bg: 'bg-red-50', 
+      text: 'text-red-700',
+      border: 'border-red-200',
+      icon: '🏬'
+    },
+    'Swiggy': { 
+      bg: 'bg-orange-50', 
+      text: 'text-orange-700',
+      border: 'border-orange-200',
+      icon: '🍔'
+    },
+    'Zepto': { 
+      bg: 'bg-purple-50', 
+      text: 'text-purple-700',
+      border: 'border-purple-200',
+      icon: '⚡'
+    },
+    'Blinkit': { 
+      bg: 'bg-yellow-50', 
+      text: 'text-yellow-700',
+      border: 'border-yellow-200',
+      icon: '🛍️'
+    },
+    'BigBasket': { 
+      bg: 'bg-green-50', 
+      text: 'text-green-700',
+      border: 'border-green-200',
+      icon: '🥕'
+    },
+    'Others': { 
+      bg: 'bg-slate-50', 
+      text: 'text-slate-700',
+      border: 'border-slate-200',
+      icon: '🏷️'
+    },
+  };
+  
+  const config = platformConfig[platform] || { 
+    bg: 'bg-slate-100', 
+    text: 'text-slate-700',
+    border: 'border-slate-200',
+    icon: '🏷️'
+  };
+  
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${config.bg} ${config.text} ${config.border}`}>
+      <span className="text-base">{config.icon}</span>
+      {platform}
+    </span>
+  );
 }
 
 export function Spinner({ label = 'Loading...' }) {

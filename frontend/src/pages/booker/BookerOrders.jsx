@@ -103,7 +103,30 @@ function OrderRow({ booking, onChange }) {
   const [proof, setProof] = useState(false);
   const [card, setCard] = useState(null);
   const fileRef = useRef(null);
+  const [showRingButton, setShowRingButton] = useState(false);
   const d = booking.deal || {};
+
+  // Show ring button after 1 minute of OTP being sent, but ONLY if OTP not yet entered
+  useEffect(() => {
+    if (booking.otpDeadline && booking.status === 'OTP_APPROVED' && !booking.otpCurrent) {
+      const otpSentTime = new Date(booking.otpDeadline).getTime() - 3 * 60 * 1000; // OTP deadline - 3 mins
+      const oneMinuteLater = otpSentTime + 60 * 1000;
+      const now = Date.now();
+      
+      if (now >= oneMinuteLater) {
+        // Already past 1 minute
+        setShowRingButton(true);
+      } else {
+        // Set timer for 1 minute
+        const timer = setTimeout(() => {
+          setShowRingButton(true);
+        }, oneMinuteLater - now);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      setShowRingButton(false);
+    }
+  }, [booking.otpDeadline, booking.status, booking.otpCurrent]);
 
   async function viewCard() {
     try {
@@ -145,7 +168,7 @@ function OrderRow({ booking, onChange }) {
 
   const canRelayOtp = ['OTP_REQUESTED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(booking.status);
   const canComplete = ['OTP_APPROVED', 'OTP_SUBMITTED'].includes(booking.status);
-  const canFail = ['ACCEPTED', 'CONFIRMED', 'OTP_REQUESTED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(
+  const canFail = ['OTP_REQUESTED', 'OTP_APPROVED', 'OTP_SUBMITTED'].includes(
     booking.status
   );
   const canViewCard = !['COMPLETED', 'REJECTED', 'CANCELLED'].includes(booking.status);
@@ -153,6 +176,15 @@ function OrderRow({ booking, onChange }) {
   function markFailed() {
     if (window.confirm('Mark this order as failed? The card holder will be notified and this deal ends.')) {
       act(`/bookings/${booking._id}/fail`);
+    }
+  }
+
+  async function ringHolder() {
+    try {
+      await api.post(`/bookings/${booking._id}/ring-holder`);
+      pushToast('🔔 Card holder notified!');
+    } catch (err) {
+      pushToast(err.response?.data?.message || 'Failed to ring');
     }
   }
 
@@ -180,21 +212,6 @@ function OrderRow({ booking, onChange }) {
           <button className="btn-secondary btn-xs" onClick={viewCard}>
             View card
           </button>
-        )}
-
-        {['ACCEPTED', 'CONFIRMED'].includes(booking.status) && (
-          <div className="rounded-lg bg-blue-50 p-3">
-            <p className="text-sm text-blue-700">
-              When you're at the payment step, alert the card holder so they're ready with their phone.
-            </p>
-            <button
-              className="btn-primary mt-2"
-              disabled={busy}
-              onClick={() => act(`/bookings/${booking._id}/request-otp`)}
-            >
-              Alert card holder to be active
-            </button>
-          </div>
         )}
 
         {booking.status === 'OTP_REQUESTED' && (
@@ -225,7 +242,7 @@ function OrderRow({ booking, onChange }) {
                 {booking.otpCurrent || '– – – – – –'}
               </span>
               <div className="flex items-center gap-2">
-                {booking.otpCurrent && (
+                {booking.otpCurrent ? (
                   <button
                     className="btn-primary"
                     onClick={() => {
@@ -235,7 +252,15 @@ function OrderRow({ booking, onChange }) {
                   >
                     Copy
                   </button>
-                )}
+                ) : showRingButton ? (
+                  <button
+                    className="btn-warning"
+                    onClick={ringHolder}
+                    title="Cardholder not responding? Ring them!"
+                  >
+                    🔔 Ring Cardholder
+                  </button>
+                ) : null}
                 <button
                   className="btn-secondary"
                   disabled={busy}

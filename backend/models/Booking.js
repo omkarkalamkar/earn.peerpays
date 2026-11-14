@@ -1,11 +1,9 @@
 const mongoose = require('mongoose');
 
 /**
- * Booking status machine:
+ * Booking status machine (SIMPLIFIED):
  * SUBMITTED     -> card holder submitted a card to a deal (waiting for a booker)
- * ACCEPTED      -> booker checked the offer and accepted; waiting for card holder to confirm
- * CONFIRMED     -> card holder confirmed the acceptance; booker can now proceed to OTP
- * OTP_REQUESTED -> booker is ready to place the order and requests OTP
+ * OTP_REQUESTED -> booker viewed card and requests OTP from card holder
  * OTP_APPROVED  -> card holder clicked "Go ahead"
  * OTP_SUBMITTED -> card holder entered the OTP; it is now visible to the booker (live)
  * COMPLETED     -> booker placed the order and uploaded the screenshot proof
@@ -14,8 +12,6 @@ const mongoose = require('mongoose');
  */
 const STATUSES = [
   'SUBMITTED',
-  'ACCEPTED',
-  'CONFIRMED',
   'OTP_REQUESTED',
   'OTP_APPROVED',
   'OTP_SUBMITTED',
@@ -33,12 +29,30 @@ const otpEntrySchema = new mongoose.Schema(
   { _id: false }
 );
 
+const cardDataSchema = new mongoose.Schema(
+  {
+    cardName: String, // Optional nickname
+    bank: String,
+    network: String,
+    type: String,
+    holderName: String,
+    number: String,
+    cvv: String,
+    expiryMonth: Number,
+    expiryYear: Number,
+    temporary: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 const bookingSchema = new mongoose.Schema(
   {
     deal: { type: mongoose.Schema.Types.ObjectId, ref: 'Deal', required: true },
     cardHolder: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     booker: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
-    card: { type: mongoose.Schema.Types.ObjectId, ref: 'Card', required: true },
+    card: { type: mongoose.Schema.Types.ObjectId, ref: 'Card', default: null },
+    // cardData: inline card details for temporary/non-saved cards
+    cardData: { type: cardDataSchema, default: null },
     status: { type: String, enum: STATUSES, default: 'SUBMITTED' },
 
     // Live OTP relay
@@ -51,6 +65,7 @@ const bookingSchema = new mongoose.Schema(
     // True when a booker rejected this card at the initial offer-check step (SUBMITTED).
     // Such a card cannot be re-submitted to the same deal.
     offerRejected: { type: Boolean, default: false },
+    rejectReason: { type: String, default: '' }, // Reason for rejection (e.g., 'offer_not_applicable')
 
     // Snapshot of the deal at completion time so the order survives (and stays
     // readable) even if the deal is later deleted.
