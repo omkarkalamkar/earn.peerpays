@@ -29,60 +29,72 @@ export function StatusBadge({ status }) {
 }
 
 export function PlatformBadge({ platform }) {
+  const [imgError, setImgError] = useState(false);
+  
   const platformConfig = {
     'Amazon': { 
       bg: 'bg-orange-50', 
       text: 'text-orange-700',
       border: 'border-orange-200',
-      icon: '📦'
+      // Try local first, fallback to Clearbit CDN
+      logo: '/logos/amazon.png',
+      fallbackLogo: 'https://logo.clearbit.com/amazon.in'
     },
     'Flipkart': { 
       bg: 'bg-blue-50', 
       text: 'text-blue-700',
       border: 'border-blue-200',
-      icon: '🛒'
+      logo: '/logos/flipkart.png',
+      fallbackLogo: 'https://logo.clearbit.com/flipkart.com'
     },
     'Croma': { 
       bg: 'bg-green-50', 
       text: 'text-green-700',
       border: 'border-green-200',
-      icon: '🏪'
+      logo: '/logos/croma.png',
+      fallbackLogo: 'https://logo.clearbit.com/croma.com'
     },
     'Reliance Digital': { 
       bg: 'bg-red-50', 
       text: 'text-red-700',
       border: 'border-red-200',
-      icon: '🏬'
+      logo: '/logos/reliance-digital.png',
+      fallbackLogo: 'https://logo.clearbit.com/reliancedigital.in'
     },
     'Swiggy': { 
       bg: 'bg-orange-50', 
       text: 'text-orange-700',
       border: 'border-orange-200',
-      icon: '🍔'
+      logo: '/logos/swiggy.png',
+      fallbackLogo: 'https://logo.clearbit.com/swiggy.com'
     },
     'Zepto': { 
       bg: 'bg-purple-50', 
       text: 'text-purple-700',
       border: 'border-purple-200',
-      icon: '⚡'
+      logo: '/logos/zepto.svg',
+      fallbackLogo: 'https://logo.clearbit.com/zeptonow.com'
     },
     'Blinkit': { 
       bg: 'bg-yellow-50', 
       text: 'text-yellow-700',
       border: 'border-yellow-200',
-      icon: '🛍️'
+      logo: '/logos/blinkit.png',
+      fallbackLogo: 'https://logo.clearbit.com/blinkit.com'
     },
     'BigBasket': { 
       bg: 'bg-green-50', 
       text: 'text-green-700',
       border: 'border-green-200',
-      icon: '🥕'
+      logo: '/logos/bigbasket.png',
+      fallbackLogo: 'https://logo.clearbit.com/bigbasket.com'
     },
     'Others': { 
       bg: 'bg-slate-50', 
       text: 'text-slate-700',
       border: 'border-slate-200',
-      icon: '🏷️'
+      logo: null,
+      fallbackLogo: null
     },
   };
   
@@ -90,12 +102,30 @@ export function PlatformBadge({ platform }) {
     bg: 'bg-slate-100', 
     text: 'text-slate-700',
     border: 'border-slate-200',
-    icon: '🏷️'
+    logo: null,
+    fallbackLogo: null
   };
   
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold ${config.bg} ${config.text} ${config.border}`}>
-      <span className="text-base">{config.icon}</span>
+      {!imgError && config.logo ? (
+        <img 
+          src={config.logo} 
+          alt={`${platform} logo`}
+          className="h-4 w-4 object-contain rounded"
+          onError={(e) => {
+            // Try fallback CDN logo
+            if (config.fallbackLogo && e.target.src !== config.fallbackLogo) {
+              e.target.src = config.fallbackLogo;
+            } else {
+              // If both fail, hide image and show fallback icon
+              setImgError(true);
+            }
+          }}
+        />
+      ) : (
+        <span className="text-base">🏷️</span>
+      )}
       {platform}
     </span>
   );

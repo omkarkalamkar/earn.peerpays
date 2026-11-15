@@ -179,7 +179,7 @@ export default function Layout({ children }) {
               {open && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                  <div className="absolute right-0 z-20 mt-2 w-[min(22rem,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+                  <div className="fixed sm:absolute left-2 right-2 sm:left-auto sm:right-0 z-20 mt-2 sm:w-96 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
                     <div className="border-b border-slate-100 px-4 py-3 font-semibold text-slate-800 bg-slate-50">
                       Notifications
                     </div>
