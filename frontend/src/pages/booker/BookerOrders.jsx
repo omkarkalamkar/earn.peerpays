@@ -73,7 +73,7 @@ export default function BookerOrders() {
           groupByHolder(active).map(([ref, items]) => (
             <div key={ref} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/60 p-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-600">{items[0]?.holderUsername || ref}</span>
+                <span className="text-xs font-semibold text-slate-600">{items[0]?.holderDisplayName || items[0]?.holderUsername || ref}</span>
                 <span className="chip bg-white text-slate-500">{items.length} card(s)</span>
                 <span className="text-[11px] text-slate-400">Finish this card holder's cards together</span>
               </div>
@@ -201,7 +201,7 @@ function OrderRow({ booking, onChange }) {
             {d.product} - {money(d.price || 0)}
           </p>
           <p className="mt-1 text-xs text-slate-400">
-            <span className="font-semibold text-slate-500">{booking.holderUsername || booking.holderRef}</span> ·
+            <span className="font-semibold text-slate-500">{booking.holderDisplayName || booking.holderUsername || booking.holderRef}</span> ·
             Ref #{booking.ref} | Card: {booking.card?.bank} ****{booking.card?.last4}
           </p>
         </div>

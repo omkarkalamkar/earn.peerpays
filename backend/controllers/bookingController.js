@@ -14,7 +14,7 @@ const OTP_WINDOW_MS = 3 * 60 * 1000;
 async function populated(id) {
   return Booking.findById(id)
     .populate('deal')
-    .populate('cardHolder', 'name username phone')
+    .populate('cardHolder', 'name username phone anonymousCode')
     .populate('booker', 'name username')
     .populate('card', 'bank network type holderName last4 expiryMonth expiryYear');
 }
@@ -76,13 +76,15 @@ function serializeForBooker(booking) {
   const bookingId = String(b._id || '');
   b.holderRef = holderId ? `CH-${holderId.slice(-5).toUpperCase()}` : 'CH-?????';
   b.ref = bookingId ? bookingId.slice(-6).toUpperCase() : '';
-  // Show only the card holder's username to the booker (not their real name / phone).
+  
+  // Show anonymous code instead of real name/username
+  b.holderDisplayName = (b.cardHolder && b.cardHolder.anonymousCode) || `C-${holderId.slice(-4).toUpperCase()}`;
   b.holderUsername = (b.cardHolder && b.cardHolder.username) || null;
   delete b.cardHolder;
   
-  // Hide card holder's real name, show anonymous user ID instead
+  // Hide card holder's real name, use anonymous code
   if (b.card && b.card.holderName) {
-    b.card.holderName = `USER-${holderId.slice(-6).toUpperCase()}`;
+    b.card.holderName = b.holderDisplayName;
   }
   // Also hide cardName (it's personal to cardholder)
   if (b.card && b.card.cardName) {
@@ -170,7 +172,7 @@ async function submit(req, res) {
     
     booking = await Booking.findById(booking._id)
       .populate('deal')
-      .populate('cardHolder', 'name username phone');
+      .populate('cardHolder', 'name username phone anonymousCode');
     
     emitToBookers('booking:new', serializeForBooker(booking));
     
@@ -276,7 +278,7 @@ async function available(req, res) {
   if (req.query.dealId) filter.deal = req.query.dealId;
   const bookings = await Booking.find(filter)
     .populate('deal')
-    .populate('cardHolder', 'name username phone')
+    .populate('cardHolder', 'name username phone anonymousCode')
     .populate('card', 'bank network type holderName last4 expiryMonth expiryYear')
     .sort({ createdAt: 1 });
   res.json({ bookings: bookings.map(serializeForBooker) });
@@ -286,7 +288,7 @@ async function available(req, res) {
 async function mineAsBooker(req, res) {
   const bookings = await Booking.find({ booker: req.user._id })
     .populate('deal')
-    .populate('cardHolder', 'name username phone')
+    .populate('cardHolder', 'name username phone anonymousCode')
     .populate('card', 'bank network type holderName last4 expiryMonth expiryYear')
     .sort({ updatedAt: -1 });
   res.json({ bookings: bookings.map(serializeForBooker) });

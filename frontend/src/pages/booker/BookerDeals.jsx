@@ -197,7 +197,7 @@ export default function BookerDeals() {
                     <span className="chip bg-brand-100 text-brand-700">#{idx + 1}</span>
                     <div>
                       <p className="text-sm font-semibold text-slate-700">
-                        {items[0]?.holderUsername || ref}
+                        {items[0]?.holderDisplayName || items[0]?.holderUsername || ref}
                       </p>
                       <p className="text-[11px] text-slate-400">
                         Shared {items[0]?.createdAt ? new Date(items[0].createdAt).toLocaleString() : '-'}
